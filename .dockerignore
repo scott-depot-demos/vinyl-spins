@@ -1,0 +1,9 @@
+.flox/
+.git/
+**/node_modules/
+**/dist/
+.env
+.env.*
+backend/bin/
+**/*.test
+pgdata/

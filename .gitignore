@@ -1,0 +1,15 @@
+.env
+.env.*
+
+# Flox runtime state
+.flox/run/
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+
+# Go
+backend/bin/
+**/*.test
+
+.DS_Store
