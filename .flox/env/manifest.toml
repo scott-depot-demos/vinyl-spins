@@ -1,0 +1,67 @@
+version = 1
+
+[install]
+go.pkg-path = "go"
+nodejs_22.pkg-path = "nodejs_22"
+pnpm_10.pkg-path = "pnpm_10"
+postgresql_16.pkg-path = "postgresql_16"
+jq.pkg-path = "jq"
+curl.pkg-path = "curl"
+openssl.pkg-path = "openssl"
+git.pkg-path = "git"
+golangci-lint.pkg-path = "golangci-lint"
+sqlc.pkg-path = "sqlc"
+just.pkg-path = "just"
+
+[vars]
+# App defaults (override with a real `.env` file as needed)
+API_URL = "http://localhost:8080"
+UI_URL = "http://localhost:5173"
+DISCOGS_OAUTH_CALLBACK_URL = "http://localhost:8080/auth/discogs/callback"
+
+# Local Postgres defaults (used by the optional Flox service below)
+PGPORT = "5432"
+PGHOST = "127.0.0.1"
+
+[hook]
+on-activate = """
+set -euo pipefail
+
+# Project root is stable even if the shell starts elsewhere
+export PROJECT_ROOT="${FLOX_ENV_PROJECT:-$PWD}"
+
+# Postgres data/socket dirs live in Flox cache so they don't pollute the repo
+export FLOX_PGDATA="${FLOX_ENV_CACHE}/postgres"
+export FLOX_PGSOCK="${FLOX_ENV_CACHE}/pgsock"
+
+mkdir -p "${FLOX_PGSOCK}"
+
+# Initialize a local Postgres cluster the first time you activate
+if [ ! -d "${FLOX_PGDATA}/base" ]; then
+  initdb -D "${FLOX_PGDATA}" >/dev/null
+  {
+    echo "listen_addresses = '127.0.0.1'"
+    echo "unix_socket_directories = '${FLOX_PGSOCK}'"
+    echo "port = 5432"
+  } >> "${FLOX_PGDATA}/postgresql.conf"
+fi
+"""
+
+[profile]
+common = """
+export PROJECT_ROOT="${PROJECT_ROOT:-${FLOX_ENV_PROJECT:-$PWD}}"
+
+alias repo='cd "$PROJECT_ROOT"'
+alias pg-start='flox services start postgres'
+alias pg-stop='flox services stop postgres'
+alias pg-status='flox services status'
+
+# (These will become active once `backend/` and `frontend/` are scaffolded.)
+alias api='(cd "$PROJECT_ROOT/backend" && go run ./cmd/api)'
+alias ui='(cd "$PROJECT_ROOT/frontend" && pnpm dev)'
+"""
+
+[services.postgres]
+command = """
+postgres -D "${FLOX_PGDATA}" -k "${FLOX_PGSOCK}" -p 5432
+"""
