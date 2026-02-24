@@ -101,7 +101,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: frontend
-          file: Dockerfile.prod
+          file: frontend/Dockerfile.prod
           push: false
           build-args: |
             DEMO_BIG=1
