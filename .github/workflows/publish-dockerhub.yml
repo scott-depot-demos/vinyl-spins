@@ -28,8 +28,8 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASS }}
 
       - name: Docker Build & push API image
         uses: docker/build-push-action@v6
@@ -39,8 +39,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/vst-api:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/vst-api:latest
+            ${{ secrets.DOCKER_USER }}/vst-api:${{ github.sha }}
+            ${{ secrets.DOCKER_USER }}/vst-api:latest
           build-args: |
             DEMO_BIG=0
           cache-from: type=gha
@@ -54,8 +54,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/vst-ui:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/vst-ui:latest
+            ${{ secrets.DOCKER_USER }}/vst-ui:${{ github.sha }}
+            ${{ secrets.DOCKER_USER }}/vst-ui:latest
           build-args: |
             DEMO_BIG=0
           cache-from: type=gha

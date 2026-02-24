@@ -43,7 +43,7 @@ export const api = {
   async albums(input?: {
     q?: string;
     artist?: string;
-    label_ids?: string; // comma-separated
+    tag_ids?: string; // comma-separated
     sort?: "artist" | "title" | "spin_count" | "last_spun_at";
     order?: "asc" | "desc";
   }): Promise<
@@ -52,27 +52,28 @@ export const api = {
       discogs_release_id: number;
       title: string;
       artist: string;
+      record_label?: string;
       year?: number;
       thumb_url?: string;
       resource_url?: string;
       last_synced_at?: string;
       spin_count: number;
       last_spun_at?: string;
-      labels: Array<{ id: string; name: string }>;
+      tags: Array<{ id: string; name: string }>;
     }>
   > {
     return await fetchJSON(
       `/api/albums${qs({
         q: input?.q,
         artist: input?.artist,
-        label_ids: input?.label_ids,
+        tag_ids: input?.tag_ids,
         sort: input?.sort,
         order: input?.order,
       })}`,
     );
   },
 
-  async pickAlbum(input?: { q?: string; artist?: string; label_ids?: string }): Promise<{
+  async pickAlbum(input?: { q?: string; artist?: string; tag_ids?: string }): Promise<{
     id: string;
     discogs_release_id: number;
     title: string;
@@ -87,7 +88,7 @@ export const api = {
       `/api/albums/pick${qs({
         q: input?.q,
         artist: input?.artist,
-        label_ids: input?.label_ids,
+        tag_ids: input?.tag_ids,
       })}`,
     );
   },
@@ -103,7 +104,7 @@ export const api = {
     last_synced_at?: string;
     spin_count: number;
     last_spun_at?: string;
-    labels: Array<{ id: string; name: string }>;
+    tags: Array<{ id: string; name: string }>;
     spins: Array<{ id: string; spun_at: string; note?: string }>;
     discogs?: {
       release_id: number;
@@ -126,8 +127,29 @@ export const api = {
     return await fetchJSON("/api/albums/sync", { method: "POST", body: "{}" });
   },
 
+  async tags(): Promise<Array<{ id: string; name: string; album_count: number }>> {
+    return await fetchJSON("/api/tags");
+  },
+
+  async createTag(input: { name: string }): Promise<{ id: string; name: string }> {
+    return await fetchJSON("/api/tags", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  async addAlbumTag(albumID: string, input: { tag_id?: string; name?: string }): Promise<void> {
+    await fetchJSON(`/api/albums/${encodeURIComponent(albumID)}/tags`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async removeAlbumTag(albumID: string, tagID: string): Promise<void> {
+    await fetchJSON(`/api/albums/${encodeURIComponent(albumID)}/tags/${encodeURIComponent(tagID)}`, {
+      method: "DELETE",
+    });
+  },
+
+  // Backwards-compatible aliases (historically called these "labels").
   async labels(): Promise<Array<{ id: string; name: string; album_count: number }>> {
-    // Tags are the preferred term; backend keeps /labels as an alias.
     return await fetchJSON("/api/tags");
   },
 
@@ -138,7 +160,7 @@ export const api = {
   async addAlbumLabel(albumID: string, input: { label_id?: string; name?: string }): Promise<void> {
     await fetchJSON(`/api/albums/${encodeURIComponent(albumID)}/tags`, {
       method: "POST",
-      body: JSON.stringify(input),
+      body: JSON.stringify({ tag_id: input.label_id, name: input.name }),
     });
   },
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
@@ -46,7 +47,7 @@ func New(ctx context.Context) (*App, error) {
 
 	r := chi.NewRouter()
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173"},
+		AllowedOrigins:   allowedOrigins(),
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,
@@ -73,16 +74,16 @@ func New(ctx context.Context) (*App, error) {
 		r.Get("/albums/pick", a.handlePickAlbum())
 		r.Get("/albums/{albumID}", a.handleAlbumDetail())
 		r.Post("/albums/sync", a.handleAlbumsSync())
-		// Tags (preferred term) + legacy labels aliases.
-		r.Get("/tags", a.handleLabels())
-		r.Post("/tags", a.handleCreateLabel())
-		r.Post("/albums/{albumID}/tags", a.handleAddAlbumLabel())
-		r.Delete("/albums/{albumID}/tags/{labelID}", a.handleRemoveAlbumLabel())
+		r.Get("/tags", a.handleTags())
+		r.Post("/tags", a.handleCreateTag())
+		r.Post("/albums/{albumID}/tags", a.handleAddAlbumTag())
+		r.Delete("/albums/{albumID}/tags/{tagID}", a.handleRemoveAlbumTag())
 
+		// Legacy aliases (older clients called these "labels").
 		r.Get("/labels", a.handleLabels())
-		r.Post("/labels", a.handleCreateLabel())
-		r.Post("/albums/{albumID}/labels", a.handleAddAlbumLabel())
-		r.Delete("/albums/{albumID}/labels/{labelID}", a.handleRemoveAlbumLabel())
+		r.Post("/labels", a.handleCreateTag())
+		r.Post("/albums/{albumID}/labels", a.handleAddAlbumTag())
+		r.Delete("/albums/{albumID}/labels/{tagID}", a.handleRemoveAlbumTag())
 		r.Get("/spins", a.handleSpins())
 		r.Post("/spins", a.handleCreateSpin())
 		r.Delete("/spins/{spinID}", a.handleDeleteSpin())
@@ -105,6 +106,32 @@ func getenvDefault(key, def string) string {
 		return def
 	}
 	return v
+}
+
+func allowedOrigins() []string {
+	// Dev defaults (docker-compose uses 5174; historical default is 5173).
+	origins := []string{"http://localhost:5173", "http://localhost:5174"}
+
+	// If FRONTEND_URL is set, derive the origin and allow it too.
+	// e.g. "http://localhost:5174/" -> "http://localhost:5174"
+	if v := os.Getenv("FRONTEND_URL"); v != "" {
+		v = strings.TrimSpace(v)
+		v = strings.TrimRight(v, "/")
+		if v != "" && !containsString(origins, v) {
+			origins = append(origins, v)
+		}
+	}
+
+	return origins
+}
+
+func containsString(xs []string, v string) bool {
+	for _, x := range xs {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 func notImplemented(msg string) http.HandlerFunc {

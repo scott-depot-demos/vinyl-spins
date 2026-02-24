@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	discogs "github.com/stmcallister/go-discogs"
 	"github.com/jackc/pgx/v5"
+	discogs "github.com/stmcallister/go-discogs"
 )
 
 func (a *App) syncDiscogsCollection(ctx context.Context, userID string) error {
@@ -76,9 +76,10 @@ where u.id = $1
 
 		title := strings.TrimSpace(rel.BasicInformation.Title)
 		artist := strings.TrimSpace(firstDiscogsArtist(rel.BasicInformation.Artists))
+		recordLabel := strings.TrimSpace(firstDiscogsRecordLabel(rel.BasicInformation.Labels))
 		year := rel.BasicInformation.Year
 		thumb := strings.TrimSpace(rel.BasicInformation.Thumb)
-		resourceURL := strings.TrimSpace(rel.BasicInformation.ResourceURL)
+		resourceURL := strings.TrimSpace(discogsReleaseURL(rel.ID, rel.BasicInformation))
 
 		var yearPtr *int
 		if year != 0 {
@@ -92,19 +93,24 @@ where u.id = $1
 		if resourceURL != "" {
 			resourcePtr = &resourceURL
 		}
+		var recordLabelPtr *string
+		if recordLabel != "" {
+			recordLabelPtr = &recordLabel
+		}
 
 		_, err := tx.Exec(ctx, `
-insert into albums (user_id, discogs_release_id, title, artist, year, thumb_url, resource_url, last_synced_at)
-values ($1, $2, $3, $4, $5, $6, $7, now())
+insert into albums (user_id, discogs_release_id, title, artist, record_label, year, thumb_url, resource_url, last_synced_at)
+values ($1, $2, $3, $4, $5, $6, $7, $8, now())
 on conflict (user_id, discogs_release_id) do update
 set title = excluded.title,
     artist = excluded.artist,
+    record_label = excluded.record_label,
     year = excluded.year,
     thumb_url = excluded.thumb_url,
     resource_url = excluded.resource_url,
     last_synced_at = now(),
     updated_at = now()
-`, userID, int64(rel.ID), title, artist, yearPtr, thumbPtr, resourcePtr)
+`, userID, int64(rel.ID), title, artist, recordLabelPtr, yearPtr, thumbPtr, resourcePtr)
 		if err != nil {
 			return fmt.Errorf("upsert album: %w", err)
 		}
@@ -126,3 +132,24 @@ func firstDiscogsArtist(artists []*discogs.Artist) string {
 	return artists[0].Name
 }
 
+func firstDiscogsRecordLabel(labels []*discogs.Entity) string {
+	if len(labels) == 0 {
+		return ""
+	}
+	if labels[0] == nil {
+		return ""
+	}
+	return labels[0].Name
+}
+
+func discogsReleaseURL(releaseID int, bi *discogs.BasicInformation) string {
+	if bi != nil {
+		if u := discogsWebReleaseURL(int64(releaseID), bi.ResourceURL); u != "" {
+			return u
+		}
+	}
+	if releaseID > 0 {
+		return fmt.Sprintf("https://www.discogs.com/release/%d", releaseID)
+	}
+	return ""
+}

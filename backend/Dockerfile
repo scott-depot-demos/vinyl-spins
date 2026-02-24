@@ -24,7 +24,8 @@ WORKDIR /src/backend
 RUN if [ "$DEMO_BIG" = "1" ]; then DEMO_BIG_N="$DEMO_BIG_N" go run ./tools/demobiggen -out internal/demobig/generated.go; fi
 RUN go build -o /out/api ./cmd/api
 RUN go build -o /out/migrate ./cmd/migrate
-RUN if [ "$DEMO_BIG" = "1" ]; then go build -o /out/worker ./cmd/worker && go build -o /out/report ./cmd/report; fi
+RUN go build -o /out/worker ./cmd/worker
+RUN go build -o /out/report ./cmd/report
 
 FROM alpine:3.20
 RUN apk add --no-cache tzdata ca-certificates

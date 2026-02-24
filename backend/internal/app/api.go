@@ -24,8 +24,8 @@ const ctxKeyUserID ctxKey = iota
 
 func (a *App) handleMe() http.HandlerFunc {
 	type resp struct {
-		UserID         string `json:"user_id"`
-		DiscogsUserID  int64  `json:"discogs_user_id"`
+		UserID          string `json:"user_id"`
+		DiscogsUserID   int64  `json:"discogs_user_id"`
 		DiscogsUsername string `json:"discogs_username"`
 	}
 
@@ -57,30 +57,31 @@ where id = $1
 }
 
 func (a *App) handleAlbums() http.HandlerFunc {
-	type label struct {
+	type tag struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	}
 	type album struct {
-		ID              string    `json:"id"`
-		DiscogsReleaseID int64     `json:"discogs_release_id"`
-		Title           string    `json:"title"`
-		Artist          string    `json:"artist"`
-		Year            *int      `json:"year,omitempty"`
-		ThumbURL        *string   `json:"thumb_url,omitempty"`
-		ResourceURL     *string   `json:"resource_url,omitempty"`
-		LastSyncedAt    *time.Time `json:"last_synced_at,omitempty"`
-		SpinCount       int        `json:"spin_count"`
-		LastSpunAt      *time.Time `json:"last_spun_at,omitempty"`
-		Labels          []label    `json:"labels"`
+		ID               string     `json:"id"`
+		DiscogsReleaseID int64      `json:"discogs_release_id"`
+		Title            string     `json:"title"`
+		Artist           string     `json:"artist"`
+		RecordLabel      *string    `json:"record_label,omitempty"`
+		Year             *int       `json:"year,omitempty"`
+		ThumbURL         *string    `json:"thumb_url,omitempty"`
+		ResourceURL      *string    `json:"resource_url,omitempty"`
+		LastSyncedAt     *time.Time `json:"last_synced_at,omitempty"`
+		SpinCount        int        `json:"spin_count"`
+		LastSpunAt       *time.Time `json:"last_spun_at,omitempty"`
+		Tags             []tag      `json:"tags"`
 	}
 
 	type albumQuery struct {
-		Q        string
-		Artist   string
-		LabelIDs []string
-		Sort     string
-		Order    string
+		Q      string
+		Artist string
+		TagIDs []string
+		Sort   string
+		Order  string
 	}
 
 	parseAlbumQuery := func(v url.Values) albumQuery {
@@ -96,11 +97,11 @@ func (a *App) handleAlbums() http.HandlerFunc {
 		if q.Sort == "" {
 			q.Sort = "artist"
 		}
-		if raw := strings.TrimSpace(v.Get("label_ids")); raw != "" {
+		if raw := strings.TrimSpace(v.Get("tag_ids")); raw != "" {
 			for _, part := range strings.Split(raw, ",") {
 				part = strings.TrimSpace(part)
 				if part != "" {
-					q.LabelIDs = append(q.LabelIDs, part)
+					q.TagIDs = append(q.TagIDs, part)
 				}
 			}
 		}
@@ -148,9 +149,9 @@ func (a *App) handleAlbums() http.HandlerFunc {
 			args = append(args, aq.Artist)
 			argN++
 		}
-		if len(aq.LabelIDs) > 0 {
-			whereSQL += " and exists (select 1 from album_labels al where al.user_id = a.user_id and al.album_id = a.id and al.label_id = any($" + strconv.Itoa(argN) + "::uuid[]))"
-			args = append(args, aq.LabelIDs)
+		if len(aq.TagIDs) > 0 {
+			whereSQL += " and exists (select 1 from album_tags at where at.user_id = a.user_id and at.album_id = a.id and at.tag_id = any($" + strconv.Itoa(argN) + "::uuid[]))"
+			args = append(args, aq.TagIDs)
 			argN++
 		}
 
@@ -176,6 +177,7 @@ select
   a.discogs_release_id,
   a.title,
   a.artist,
+  nullif(a.record_label, '') as record_label,
   a.year,
   a.thumb_url,
   a.resource_url,
@@ -199,11 +201,20 @@ limit 500
 		var albumIDs []string
 		for rows.Next() {
 			var a album
-			if err := rows.Scan(&a.ID, &a.DiscogsReleaseID, &a.Title, &a.Artist, &a.Year, &a.ThumbURL, &a.ResourceURL, &a.LastSyncedAt, &a.SpinCount, &a.LastSpunAt); err != nil {
+			if err := rows.Scan(&a.ID, &a.DiscogsReleaseID, &a.Title, &a.Artist, &a.RecordLabel, &a.Year, &a.ThumbURL, &a.ResourceURL, &a.LastSyncedAt, &a.SpinCount, &a.LastSpunAt); err != nil {
 				writeJSONError(w, http.StatusInternalServerError, err)
 				return
 			}
-			a.Labels = []label{}
+			if a.ResourceURL != nil {
+				u := discogsWebReleaseURL(a.DiscogsReleaseID, *a.ResourceURL)
+				a.ResourceURL = &u
+			} else if a.DiscogsReleaseID > 0 {
+				u := discogsWebReleaseURL(a.DiscogsReleaseID, "")
+				if u != "" {
+					a.ResourceURL = &u
+				}
+			}
+			a.Tags = []tag{}
 			out = append(out, a)
 			albumIDs = append(albumIDs, a.ID)
 		}
@@ -212,14 +223,14 @@ limit 500
 			return
 		}
 
-		// Attach labels in a second query (avoids complex aggregation).
+		// Attach tags in a second query (avoids complex aggregation).
 		if len(albumIDs) > 0 {
 			lrows, err := a.db.Query(r.Context(), `
-select al.album_id, l.id, l.name
-from album_labels al
-join labels l on l.id = al.label_id and l.user_id = al.user_id
-where al.user_id = $1 and al.album_id = any($2::uuid[])
-order by l.name asc
+select at.album_id, t.id, t.name
+from album_tags at
+join tags t on t.id = at.tag_id and t.user_id = at.user_id
+where at.user_id = $1 and at.album_id = any($2::uuid[])
+order by t.name asc
 `, userID, albumIDs)
 			if err != nil {
 				writeJSONError(w, http.StatusInternalServerError, err)
@@ -227,21 +238,21 @@ order by l.name asc
 			}
 			defer lrows.Close()
 
-			byAlbum := make(map[string][]label, len(albumIDs))
+			byAlbum := make(map[string][]tag, len(albumIDs))
 			for lrows.Next() {
-				var albumID, labelID, name string
-				if err := lrows.Scan(&albumID, &labelID, &name); err != nil {
+				var albumID, tagID, name string
+				if err := lrows.Scan(&albumID, &tagID, &name); err != nil {
 					writeJSONError(w, http.StatusInternalServerError, err)
 					return
 				}
-				byAlbum[albumID] = append(byAlbum[albumID], label{ID: labelID, Name: name})
+				byAlbum[albumID] = append(byAlbum[albumID], tag{ID: tagID, Name: name})
 			}
 			if lrows.Err() != nil {
 				writeJSONError(w, http.StatusInternalServerError, lrows.Err())
 				return
 			}
 			for i := range out {
-				out[i].Labels = byAlbum[out[i].ID]
+				out[i].Tags = byAlbum[out[i].ID]
 			}
 		}
 
@@ -318,12 +329,12 @@ func (a *App) handlePickAlbum() http.HandlerFunc {
 		// Same filters as /api/albums (optional).
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
 		artist := strings.TrimSpace(r.URL.Query().Get("artist"))
-		var labelIDs []string
-		if raw := strings.TrimSpace(r.URL.Query().Get("label_ids")); raw != "" {
+		var tagIDs []string
+		if raw := strings.TrimSpace(r.URL.Query().Get("tag_ids")); raw != "" {
 			for _, part := range strings.Split(raw, ",") {
 				part = strings.TrimSpace(part)
 				if part != "" {
-					labelIDs = append(labelIDs, part)
+					tagIDs = append(tagIDs, part)
 				}
 			}
 		}
@@ -346,9 +357,9 @@ func (a *App) handlePickAlbum() http.HandlerFunc {
 			args = append(args, artist)
 			argN++
 		}
-		if len(labelIDs) > 0 {
-			whereSQL += " and exists (select 1 from album_labels al where al.user_id = a.user_id and al.album_id = a.id and al.label_id = any($" + strconv.Itoa(argN) + "::uuid[]))"
-			args = append(args, labelIDs)
+		if len(tagIDs) > 0 {
+			whereSQL += " and exists (select 1 from album_tags at where at.user_id = a.user_id and at.album_id = a.id and at.tag_id = any($" + strconv.Itoa(argN) + "::uuid[]))"
+			args = append(args, tagIDs)
 			argN++
 		}
 
@@ -405,12 +416,22 @@ limit 1
 			return
 		}
 
+		if out.ResourceURL != nil {
+			u := discogsWebReleaseURL(out.DiscogsReleaseID, *out.ResourceURL)
+			out.ResourceURL = &u
+		} else if out.DiscogsReleaseID > 0 {
+			u := discogsWebReleaseURL(out.DiscogsReleaseID, "")
+			if u != "" {
+				out.ResourceURL = &u
+			}
+		}
+
 		writeJSON(w, http.StatusOK, out)
 	}
 }
 
 func (a *App) handleAlbumDetail() http.HandlerFunc {
-	type label struct {
+	type tag struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	}
@@ -451,7 +472,7 @@ func (a *App) handleAlbumDetail() http.HandlerFunc {
 		LastSyncedAt    *time.Time `json:"last_synced_at,omitempty"`
 		SpinCount       int        `json:"spin_count"`
 		LastSpunAt      *time.Time `json:"last_spun_at,omitempty"`
-		Labels          []label    `json:"labels"`
+		Tags            []tag      `json:"tags"`
 		Spins           []spin     `json:"spins"`
 		Discogs         *discogsDetails `json:"discogs,omitempty"`
 	}
@@ -499,27 +520,37 @@ group by a.id
 			return
 		}
 
-		// Labels
+		if out.ResourceURL != nil {
+			u := discogsWebReleaseURL(out.DiscogsReleaseID, *out.ResourceURL)
+			out.ResourceURL = &u
+		} else if out.DiscogsReleaseID > 0 {
+			u := discogsWebReleaseURL(out.DiscogsReleaseID, "")
+			if u != "" {
+				out.ResourceURL = &u
+			}
+		}
+
+		// Tags
 		lrows, err := a.db.Query(r.Context(), `
-select l.id, l.name
-from album_labels al
-join labels l on l.id = al.label_id and l.user_id = al.user_id
-where al.user_id = $1 and al.album_id = $2
-order by l.name asc
+select t.id, t.name
+from album_tags at
+join tags t on t.id = at.tag_id and t.user_id = at.user_id
+where at.user_id = $1 and at.album_id = $2
+order by t.name asc
 `, userID, albumID)
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err)
 			return
 		}
 		defer lrows.Close()
-		out.Labels = []label{}
+		out.Tags = []tag{}
 		for lrows.Next() {
-			var x label
+			var x tag
 			if err := lrows.Scan(&x.ID, &x.Name); err != nil {
 				writeJSONError(w, http.StatusInternalServerError, err)
 				return
 			}
-			out.Labels = append(out.Labels, x)
+			out.Tags = append(out.Tags, x)
 		}
 		if lrows.Err() != nil {
 			writeJSONError(w, http.StatusInternalServerError, lrows.Err())
@@ -886,8 +917,30 @@ where a.id is null
 	}
 }
 
+func discogsWebReleaseURL(releaseID int64, stored string) string {
+	// If we've already stored a human-facing Discogs URL, keep it.
+	if s := strings.TrimSpace(stored); s != "" {
+		if strings.Contains(s, "www.discogs.com/release/") || strings.Contains(s, "discogs.com/release/") {
+			return s
+		}
+		// Legacy stored value: API resource URL like "https://api.discogs.com/releases/123"
+		if strings.Contains(s, "api.discogs.com/releases/") && releaseID > 0 {
+			return fmt.Sprintf("https://www.discogs.com/release/%d", releaseID)
+		}
+	}
+	if releaseID > 0 {
+		return fmt.Sprintf("https://www.discogs.com/release/%d", releaseID)
+	}
+	return ""
+}
+
 func (a *App) handleLabels() http.HandlerFunc {
-	type label struct {
+	// Backwards-compatible alias: historically called these "labels".
+	return a.handleTags()
+}
+
+func (a *App) handleTags() http.HandlerFunc {
+	type tag struct {
 		ID         string `json:"id"`
 		Name       string `json:"name"`
 		AlbumCount int    `json:"album_count"`
@@ -903,21 +956,21 @@ func (a *App) handleLabels() http.HandlerFunc {
 			return
 		}
 		rows, err := a.db.Query(r.Context(), `
-select l.id, l.name, count(al.album_id) as album_count
-from labels l
-left join album_labels al on al.label_id = l.id and al.user_id = l.user_id
-where l.user_id = $1
-group by l.id
-order by l.name asc
+select t.id, t.name, count(at.album_id) as album_count
+from tags t
+left join album_tags at on at.tag_id = t.id and at.user_id = t.user_id
+where t.user_id = $1
+group by t.id
+order by t.name asc
 `, userID)
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err)
 			return
 		}
 		defer rows.Close()
-		var out []label
+		var out []tag
 		for rows.Next() {
-			var x label
+			var x tag
 			if err := rows.Scan(&x.ID, &x.Name, &x.AlbumCount); err != nil {
 				writeJSONError(w, http.StatusInternalServerError, err)
 				return
@@ -932,7 +985,7 @@ order by l.name asc
 	}
 }
 
-func (a *App) handleCreateLabel() http.HandlerFunc {
+func (a *App) handleCreateTag() http.HandlerFunc {
 	type req struct {
 		Name string `json:"name"`
 	}
@@ -963,7 +1016,7 @@ func (a *App) handleCreateLabel() http.HandlerFunc {
 		var id string
 		// Upsert by (user_id, name) unique index.
 		err = a.db.QueryRow(r.Context(), `
-insert into labels (user_id, name)
+insert into tags (user_id, name)
 values ($1, $2)
 on conflict (user_id, name) do update
 set name = excluded.name,
@@ -978,10 +1031,10 @@ returning id
 	}
 }
 
-func (a *App) handleAddAlbumLabel() http.HandlerFunc {
+func (a *App) handleAddAlbumTag() http.HandlerFunc {
 	type req struct {
-		LabelID string `json:"label_id,omitempty"`
-		Name    string `json:"name,omitempty"` // optional: create/find label by name
+		TagID string `json:"tag_id,omitempty"`
+		Name  string `json:"name,omitempty"` // optional: create/find tag by name
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := a.requireSession(r)
@@ -1016,42 +1069,42 @@ func (a *App) handleAddAlbumLabel() http.HandlerFunc {
 			return
 		}
 
-		labelID := strings.TrimSpace(in.LabelID)
-		if labelID == "" {
+		tagID := strings.TrimSpace(in.TagID)
+		if tagID == "" {
 			name := strings.TrimSpace(in.Name)
 			if name == "" {
-				writeJSONError(w, http.StatusBadRequest, errors.New("label_id or name required"))
+				writeJSONError(w, http.StatusBadRequest, errors.New("tag_id or name required"))
 				return
 			}
 			if err := a.db.QueryRow(r.Context(), `
-insert into labels (user_id, name)
+insert into tags (user_id, name)
 values ($1, $2)
 on conflict (user_id, name) do update
 set name = excluded.name,
     updated_at = now()
 returning id
-`, userID, name).Scan(&labelID); err != nil {
+`, userID, name).Scan(&tagID); err != nil {
 				writeJSONError(w, http.StatusInternalServerError, err)
 				return
 			}
 		} else {
-			// Ensure label belongs to user.
+			// Ensure tag belongs to user.
 			var exists bool
-			if err := a.db.QueryRow(r.Context(), `select exists(select 1 from labels where id=$1 and user_id=$2)`, labelID, userID).Scan(&exists); err != nil {
+			if err := a.db.QueryRow(r.Context(), `select exists(select 1 from tags where id=$1 and user_id=$2)`, tagID, userID).Scan(&exists); err != nil {
 				writeJSONError(w, http.StatusInternalServerError, err)
 				return
 			}
 			if !exists {
-				writeJSONError(w, http.StatusNotFound, errors.New("label not found"))
+				writeJSONError(w, http.StatusNotFound, errors.New("tag not found"))
 				return
 			}
 		}
 
 		_, err = a.db.Exec(r.Context(), `
-insert into album_labels (user_id, album_id, label_id)
+insert into album_tags (user_id, album_id, tag_id)
 values ($1, $2, $3)
-on conflict (album_id, label_id) do nothing
-`, userID, albumID, labelID)
+on conflict (album_id, tag_id) do nothing
+`, userID, albumID, tagID)
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err)
 			return
@@ -1060,7 +1113,7 @@ on conflict (album_id, label_id) do nothing
 	}
 }
 
-func (a *App) handleRemoveAlbumLabel() http.HandlerFunc {
+func (a *App) handleRemoveAlbumTag() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := a.requireSession(r)
 		if err != nil {
@@ -1072,21 +1125,21 @@ func (a *App) handleRemoveAlbumLabel() http.HandlerFunc {
 			return
 		}
 		albumID := strings.TrimSpace(chi.URLParam(r, "albumID"))
-		labelID := strings.TrimSpace(chi.URLParam(r, "labelID"))
-		if albumID == "" || labelID == "" {
-			writeJSONError(w, http.StatusBadRequest, errors.New("albumID and labelID required"))
+		tagID := strings.TrimSpace(chi.URLParam(r, "tagID"))
+		if albumID == "" || tagID == "" {
+			writeJSONError(w, http.StatusBadRequest, errors.New("albumID and tagID required"))
 			return
 		}
 		ct, err := a.db.Exec(r.Context(), `
-delete from album_labels
-where user_id = $1 and album_id = $2 and label_id = $3
-`, userID, albumID, labelID)
+delete from album_tags
+where user_id = $1 and album_id = $2 and tag_id = $3
+`, userID, albumID, tagID)
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err)
 			return
 		}
 		if ct.RowsAffected() == 0 {
-			writeJSONError(w, http.StatusNotFound, errors.New("album label not found"))
+			writeJSONError(w, http.StatusNotFound, errors.New("album tag not found"))
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -1095,13 +1148,13 @@ where user_id = $1 and album_id = $2 and label_id = $3
 
 func (a *App) handleSpins() http.HandlerFunc {
 	type spin struct {
-		ID         string     `json:"id"`
-		AlbumID    string     `json:"album_id"`
-		SpunAt     time.Time  `json:"spun_at"`
-		Note       *string    `json:"note,omitempty"`
-		AlbumTitle string     `json:"album_title"`
+		ID          string    `json:"id"`
+		AlbumID     string    `json:"album_id"`
+		SpunAt      time.Time `json:"spun_at"`
+		Note        *string   `json:"note,omitempty"`
+		AlbumTitle  string    `json:"album_title"`
 		AlbumArtist string    `json:"album_artist"`
-		AlbumThumb *string    `json:"album_thumb_url,omitempty"`
+		AlbumThumb  *string   `json:"album_thumb_url,omitempty"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1155,9 +1208,9 @@ limit 200
 
 func (a *App) handleCreateSpin() http.HandlerFunc {
 	type req struct {
-		AlbumID    string  `json:"album_id"`
-		SpunAt     *string `json:"spun_at,omitempty"` // RFC3339
-		Note       *string `json:"note,omitempty"`
+		AlbumID string  `json:"album_id"`
+		SpunAt  *string `json:"spun_at,omitempty"` // RFC3339
+		Note    *string `json:"note,omitempty"`
 	}
 	type resp struct {
 		ID string `json:"id"`
@@ -1308,4 +1361,3 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
-
