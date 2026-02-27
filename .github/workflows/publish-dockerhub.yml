@@ -56,9 +56,9 @@ jobs:
           # Find the deployment manifest in the config repo.
           MANIFEST=""
           for p in \
-            "config-repo/config/deployment.yaml" \
-            "config-repo/k8s/deployment.yaml" \
-            "config-repo/deployment.yaml"
+            "config-repo/config/30-api.yaml" \
+            "config-repo/config/40-ui.yaml" \
+            "config-repo/config/50-ingress-ngrok-oauth.yaml" \
           do
             if [ -f "$p" ]; then
               MANIFEST="$p"
@@ -69,9 +69,9 @@ jobs:
           if [ -z "$MANIFEST" ]; then
             echo "ERROR: could not find deployment manifest in config repo."
             echo "Looked for:"
-            echo "  - config/deployment.yaml"
-            echo "  - k8s/deployment.yaml"
-            echo "  - deployment.yaml"
+            echo "  - config/config/30-api.yaml"
+            echo "  - config/40-ui.yaml"
+            echo "  - config/50-ingress-ngrok-oauth.yaml"
             echo
             echo "Repo tree:"
             ls -la config-repo || true
