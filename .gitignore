@@ -14,5 +14,8 @@ frontend/dist/
 backend/bin/
 **/*.test
 
+# Local clone of the config repo (checked out in CI).
+vinyl-spins-config/
+
 .DS_Store
 

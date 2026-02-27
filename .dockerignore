@@ -1,5 +1,6 @@
 .flox/
 .git/
+**/.git/
 **/node_modules/
 **/dist/
 .env
@@ -7,3 +8,4 @@
 backend/bin/
 **/*.test
 pgdata/
+vinyl-spins-config/

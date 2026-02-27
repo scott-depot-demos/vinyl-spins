@@ -57,3 +57,20 @@ Then open:
 - OAuth access tokens/secrets are encrypted at rest using `APP_ENC_KEY` (AES-GCM).
 - This repo uses `github.com/stmcallister/go-discogs` (via a Go workspace).
 
+## Multi-platform Docker images (amd64 + arm64)
+
+- The GitHub workflow at `.github/workflows/publish-dockerhub.yml` builds and pushes **multi-arch** images (via Depot) for:
+  - `${DOCKER_USER}/vst-api`
+  - `${DOCKER_USER}/vst-ui`
+- Locally, you can build/push the same multi-platform images using Depot Bake:
+
+```bash
+DOCKER_USER=your-dockerhub-user TAG=latest depot bake --push
+```
+
+To also publish the `latest` tag alongside a specific tag (for example, a git SHA):
+
+```bash
+DOCKER_USER=your-dockerhub-user TAG=$(git rev-parse HEAD) PUSH_LATEST=true depot bake --push
+```
+

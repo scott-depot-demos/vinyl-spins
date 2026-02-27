@@ -20,7 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Depot
+      - name: Set up Depot CLI
         uses: depot/setup-action@v1
 
       - name: Login to Docker Hub
@@ -29,38 +29,21 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASS }}
 
-      - name: Build & push API image
-        uses: depot/build-push-action@v1
+      - name: Build & push multi-platform images (API + UI)
+        uses: depot/bake-action@v1
         with:
-          context: .
-          file: backend/Dockerfile
-          project: ln4tfk4zrt
-          platforms: linux/amd64,linux/arm64
+          files: docker-bake.hcl
           push: true
-          tags: |
-            ${{ secrets.DOCKER_USER }}/vst-api:${{ github.sha }}
-            ${{ secrets.DOCKER_USER }}/vst-api:latest
-          build-args: |
-            DEMO_BIG=0
-
-      - name: Build & push UI (prod) image
-        uses: depot/build-push-action@v1
-        with:
-          context: frontend
-          file: frontend/Dockerfile.prod
-          project: ln4tfk4zrt
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USER }}/vst-ui:${{ github.sha }}
-            ${{ secrets.DOCKER_USER }}/vst-ui:latest
-          build-args: |
-            DEMO_BIG=0
+          provenance: false
+        env:
+          DOCKER_USER: ${{ secrets.DOCKER_USER }}
+          TAG: ${{ github.sha }}
+          PUSH_LATEST: "true"
 
       - name: Checkout config manifests
         uses: actions/checkout@v4
         with:
-          repository: scott-depot-demos/vinyl-spins-config
+          repository: ${{ github.repository_owner }}/vinyl-spins-config
           path: config-repo
           token: ${{ secrets.GH_TOKEN }}
           persist-credentials: true
@@ -99,6 +82,8 @@ jobs:
           sed -i \
             -e "s|DOCKER_URL|${{ secrets.DOCKER_URL }}|g" \
             -e "s|IMAGE_LABEL|${{ github.sha }}|g" \
+            -e "s|ALLOW_EMAIL|${{ secrets.ALLOW_EMAIL }}|g" \
+            -e "s|APP_URL|${{ vars.APP_URL }}|g" \            
             "$MANIFEST"
 
       - name: Commit and push updated manifests (render_prod)

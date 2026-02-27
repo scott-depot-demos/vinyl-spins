@@ -1,9 +1,14 @@
-FROM golang:1.22-alpine AS build
+# syntax=docker/dockerfile:1.7
+
+ARG BUILDPLATFORM
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS build
 
 WORKDIR /src
 
 ARG DEMO_BIG=0
 ARG DEMO_BIG_N=20000
+ARG TARGETOS
+ARG TARGETARCH
 
 # Build context is repo root (see docker-compose.yml).
 COPY go.work go.work
@@ -15,17 +20,24 @@ COPY go-discogs/go.mod go-discogs/go.mod
 COPY go-discogs/ go-discogs/
 
 WORKDIR /src/backend
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
 
 WORKDIR /src
 COPY backend/ backend/
 
 WORKDIR /src/backend
-RUN if [ "$DEMO_BIG" = "1" ]; then DEMO_BIG_N="$DEMO_BIG_N" go run ./tools/demobiggen -out internal/demobig/generated.go; fi
-RUN go build -o /out/api ./cmd/api
-RUN go build -o /out/migrate ./cmd/migrate
-RUN go build -o /out/worker ./cmd/worker
-RUN go build -o /out/report ./cmd/report
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    if [ "$DEMO_BIG" = "1" ]; then DEMO_BIG_N="$DEMO_BIG_N" go run ./tools/demobiggen -out internal/demobig/generated.go; fi
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+    go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api && \
+    go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate && \
+    go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker && \
+    go build -trimpath -ldflags="-s -w" -o /out/report ./cmd/report
 
 FROM alpine:3.20
 RUN apk add --no-cache tzdata ca-certificates
