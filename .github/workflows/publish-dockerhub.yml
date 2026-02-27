@@ -53,23 +53,29 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Find the deployment manifest in the config repo.
-          MANIFEST=""
+          # Update known manifest files in the config repo (API/UI/Ingress).
+          UPDATED=0
           for p in \
             "config-repo/config/30-api.yaml" \
             "config-repo/config/40-ui.yaml" \
-            "config-repo/config/50-ingress-ngrok-oauth.yaml" \
+            "config-repo/config/50-ingress-ngrok-oauth.yaml"
           do
             if [ -f "$p" ]; then
-              MANIFEST="$p"
-              break
+              echo "Updating manifest: $p"
+              sed -i \
+                -e "s|DOCKER_URL|${{ secrets.DOCKER_URL }}|g" \
+                -e "s|IMAGE_LABEL|${{ github.sha }}|g" \
+                -e "s|ALLOW_EMAIL|${{ secrets.ALLOW_EMAIL }}|g" \
+                -e "s|APP_URL|${{ vars.APP_URL }}|g" \
+                "$p"
+              UPDATED=1
             fi
           done
 
-          if [ -z "$MANIFEST" ]; then
+          if [ "$UPDATED" -eq 0 ]; then
             echo "ERROR: could not find deployment manifest in config repo."
             echo "Looked for:"
-            echo "  - config/config/30-api.yaml"
+            echo "  - config/30-api.yaml"
             echo "  - config/40-ui.yaml"
             echo "  - config/50-ingress-ngrok-oauth.yaml"
             echo
@@ -77,14 +83,6 @@ jobs:
             ls -la config-repo || true
             exit 1
           fi
-
-          echo "Updating manifest: $MANIFEST"
-          sed -i \
-            -e "s|DOCKER_URL|${{ secrets.DOCKER_URL }}|g" \
-            -e "s|IMAGE_LABEL|${{ github.sha }}|g" \
-            -e "s|ALLOW_EMAIL|${{ secrets.ALLOW_EMAIL }}|g" \
-            -e "s|APP_URL|${{ vars.APP_URL }}|g" \
-            "$MANIFEST"
 
       - name: Commit and push updated manifests (render_prod)
         shell: bash
