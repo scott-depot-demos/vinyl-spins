@@ -38,7 +38,7 @@ jobs:
         env:
           DOCKER_USER: ${{ secrets.DOCKER_USER }}
           TAG: ${{ github.sha }}
-          PUSH_LATEST: "true"
+          PUSH_LATEST: "false"
 
       - name: Checkout config manifests
         uses: actions/checkout@v4
@@ -46,7 +46,7 @@ jobs:
           repository: ${{ github.repository_owner }}/vinyl-spins-config
           path: config-repo
           token: ${{ secrets.GH_TOKEN }}
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Configure Kubernetes manifests
         shell: bash
@@ -87,8 +87,13 @@ jobs:
       - name: Commit and push updated manifests (render_prod)
         shell: bash
         working-directory: config-repo
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -euo pipefail
+
+          : "${GH_TOKEN:?Missing secrets.GH_TOKEN. Create a PAT (or GitHub App token) with write access to ${GITHUB_REPOSITORY_OWNER}/vinyl-spins-config and store it as GH_TOKEN.}"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY_OWNER}/vinyl-spins-config.git"
 
           if git diff --quiet; then
             echo "No manifest changes detected; skipping commit."

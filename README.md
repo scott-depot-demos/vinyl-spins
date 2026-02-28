@@ -71,6 +71,6 @@ DOCKER_USER=your-dockerhub-user TAG=latest depot bake --push
 To also publish the `latest` tag alongside a specific tag (for example, a git SHA):
 
 ```bash
-DOCKER_USER=your-dockerhub-user TAG=$(git rev-parse HEAD) PUSH_LATEST=true depot bake --push
+DOCKER_USER=your-dockerhub-user TAG=$(git rev-parse HEAD) depot bake --push
 ```
 
