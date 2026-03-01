@@ -26,7 +26,10 @@ export function App() {
     retry: false,
   });
 
-  const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8080";
+  const apiUrl =
+    (import.meta.env.VITE_API_URL as string | undefined) ??
+    (import.meta.env.PROD ? "" : "http://localhost:8080");
+  const discogsStartHref = import.meta.env.PROD ? "/auth/discogs/start" : `${apiUrl}/auth/discogs/start`;
 
   const me = useQuery({
     queryKey: ["me"],
@@ -167,7 +170,7 @@ export function App() {
             ) : (
               <a
                 className="rounded-md bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
-                href={`${apiUrl}/auth/discogs/start`}
+                href={discogsStartHref}
               >
                 Connect Discogs
               </a>
