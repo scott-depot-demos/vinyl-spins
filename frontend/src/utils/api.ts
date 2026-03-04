@@ -29,6 +29,19 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+type ImportOggerPlaylogResponse = {
+  total_rows: number;
+  parsed_rows: number;
+  deduped_rows: number;
+  matched_rows: number;
+  inserted_spins: number;
+  already_existed: number;
+  unmatched_rows: number;
+  unmatched_release_ids?: number[];
+  parse_errors: number;
+  timezone: string;
+};
+
 export const api = {
   async healthz(): Promise<string> {
     const res = await fetch(`${API_URL}/healthz`);
@@ -196,18 +209,7 @@ export const api = {
     await fetchJSON("/auth/logout", { method: "POST", body: "{}" });
   },
 
-  async importOggerPlaylog(file: File, input?: { tz?: string }): Promise<{
-    total_rows: number;
-    parsed_rows: number;
-    deduped_rows: number;
-    matched_rows: number;
-    inserted_spins: number;
-    already_existed: number;
-    unmatched_rows: number;
-    unmatched_release_ids?: number[];
-    parse_errors: number;
-    timezone: string;
-  }> {
+  async importOggerPlaylog(file: File, input?: { tz?: string }): Promise<ImportOggerPlaylogResponse> {
     const fd = new FormData();
     fd.set("file", file);
     const tz = input?.tz?.trim();
@@ -221,7 +223,7 @@ export const api = {
       const text = await res.text().catch(() => "");
       throw new Error(`/api/import/ogger-playlog failed: ${res.status}${text ? `: ${text}` : ""}`);
     }
-    return (await res.json()) as any;
+    return (await res.json()) as ImportOggerPlaylogResponse;
   },
 };
 

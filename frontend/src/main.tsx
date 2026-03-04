@@ -8,8 +8,7 @@ import { demoBigSum } from "./generated/demobig";
 const queryClient = new QueryClient();
 
 // Demo build knob: importing this module makes TS/Vite work scale with generated size.
-if ((import.meta as any).env?.DEMO_BIG === "1") {
-  // eslint-disable-next-line no-console
+if (import.meta.env["DEMO_BIG"] === "1") {
   console.log("demo big sum", demoBigSum());
 }
 

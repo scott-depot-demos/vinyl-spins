@@ -15,6 +15,17 @@ export default [
   js.configs.recommended,
   ...tseslint.configs.recommended,
 
+  // Node scripts and configs (ESLint's recommended rules include `no-undef`).
+  {
+    files: ["tools/**/*.{js,mjs,cjs}", "*.{js,mjs,cjs}", "**/*.{config,conf}.{js,mjs,cjs,ts}"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        console: "readonly",
+      },
+    },
+  },
+
   {
     files: ["**/*.{js,jsx,ts,tsx}"],
     languageOptions: {
