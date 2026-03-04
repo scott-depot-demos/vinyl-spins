@@ -49,15 +49,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+          run_install: false
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: "pnpm"
           cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Enable pnpm
-        run: corepack enable && corepack prepare pnpm@10.28.0 --activate
 
       - name: Install
         working-directory: frontend
@@ -82,30 +85,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Set up Depot CLI
+        uses: depot/setup-action@v1
 
       - name: Build API image (demo big)
-        uses: docker/build-push-action@v6
+        uses: depot/build-push-action@v1
         with:
+          project: ${{ secrets.DEPOT_PROJECT }}
+          token: ${{ secrets.DEPOT_TOKEN }}
           context: .
           file: backend/Dockerfile
           push: false
+          provenance: false
           build-args: |
             DEMO_BIG=1
             DEMO_BIG_N=${{ inputs.demo_big_n_go }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Build UI prod image (demo big)
-        uses: docker/build-push-action@v6
+        uses: depot/build-push-action@v1
         with:
+          project: ${{ secrets.DEPOT_PROJECT }}
+          token: ${{ secrets.DEPOT_TOKEN }}
           context: frontend
           file: frontend/Dockerfile.prod
           push: false
+          provenance: false
           build-args: |
             DEMO_BIG=1
             DEMO_BIG_N=${{ inputs.demo_big_n_ts }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
