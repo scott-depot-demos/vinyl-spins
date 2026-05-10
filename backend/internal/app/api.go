@@ -372,6 +372,8 @@ func (a *App) handlePickRecord() http.HandlerFunc {
 
 		havingSQL := ""
 		if r.URL.Query().Get("neglected") == "true" {
+			// Exclude 7" singles from neglected picks
+			whereSQL += " and (a.format is null or a.format not like '7%')"
 			havingSQL = "having max(s.spun_at) < now() - interval '6 months'"
 		}
 

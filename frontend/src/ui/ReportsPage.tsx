@@ -256,8 +256,7 @@ function CollectionReportSections(props: { data: CollectionReport }) {
 
 export function ReportsPage() {
   const [period, setPeriod] = useState<"week" | "month">("week");
-  const [neglectedTab, setNeglectedTab] = useState<"never" | "stale">("never");
-  const [activeTab, setActiveTab] = useState<"activity" | "collection">("activity");
+  const [activeTab, setActiveTab] = useState<"activity" | "collection" | "neglected">("activity");
 
   const report = useQuery({
     queryKey: ["reports", period],
@@ -301,6 +300,17 @@ export function ReportsPage() {
         >
           Collection
         </button>
+        <button
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            activeTab === "neglected"
+              ? "bg-white shadow-sm dark:bg-white/[0.08] text-zinc-900 dark:text-white"
+              : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+          }`}
+          onClick={() => setActiveTab("neglected")}
+        >
+          Not played in 6+ months
+          {report.data ? <span className="ml-1.5 text-xs font-normal opacity-60">({report.data.neglected.length})</span> : null}
+        </button>
       </div>
 
       {report.isError ? (
@@ -320,6 +330,48 @@ export function ReportsPage() {
           <CollectionReportSections data={collectionReport.data} />
         ) : null
       ) : null}
+
+      {/* ── Not played in 6+ months tab ── */}
+      {activeTab === "neglected" && (
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.04]">
+          <div className="mb-4 flex items-center gap-4">
+            <h2 className="text-sm font-semibold">Not played in 6+ months</h2>
+            {!!report.data?.neglected.length && (
+              <button
+                className="ml-auto text-xs font-medium px-2.5 py-1 rounded-md bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition-colors"
+                onClick={() => pickNeglected.mutate()}
+                disabled={pickNeglected.isPending}
+              >
+                {pickNeglected.isPending ? "Picking…" : "Pick one"}
+              </button>
+            )}
+          </div>
+          {report.isLoading ? (
+            <div className="space-y-2">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="h-10 animate-pulse rounded bg-zinc-100 dark:bg-white/[0.04]" />
+              ))}
+            </div>
+          ) : !data?.neglected.length ? (
+            <div className="text-sm text-zinc-500">All played records have been spun in the last 6 months.</div>
+          ) : (
+            <ul className="max-h-[70vh] overflow-auto">
+              {data.neglected.map((r) => (
+                <RecordRow
+                  key={r.id}
+                  id={r.id}
+                  artist={r.artist}
+                  title={r.title}
+                  year={r.year}
+                  thumbUrl={r.thumb_url}
+                  lastSpunAt={r.last_spun_at}
+                  spinCount={r.spin_count}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {activeTab !== "activity" ? null : (
       <>
@@ -425,77 +477,15 @@ export function ReportsPage() {
         )}
       </section>
 
-      {/* ── Never played / Neglected ── */}
+      {/* ── Never played / Neglected (moved: "Not played in 6+ months" is now its own top-level tab; "Never played" hidden for now) ──
       <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.04]">
         <div className="mb-4 flex items-center gap-4">
-          <button
-            className={`text-sm font-semibold border-b-2 pb-1 transition-colors ${
-              neglectedTab === "never"
-                ? "border-red-500 text-red-600 dark:text-red-400"
-                : "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-            }`}
-            onClick={() => setNeglectedTab("never")}
-          >
-            Never played
-            {data ? <span className="ml-1.5 text-xs font-normal">({data.never_played.length})</span> : null}
-          </button>
-          <button
-            className={`text-sm font-semibold border-b-2 pb-1 transition-colors ${
-              neglectedTab === "stale"
-                ? "border-red-500 text-red-600 dark:text-red-400"
-                : "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-            }`}
-            onClick={() => setNeglectedTab("stale")}
-          >
-            Not played in 6+ months
-            {data ? <span className="ml-1.5 text-xs font-normal">({data.neglected.length})</span> : null}
-          </button>
-          {neglectedTab === "stale" && !!data?.neglected.length && (
-            <button
-              className="ml-auto text-xs font-medium px-2.5 py-1 rounded-md bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition-colors"
-              onClick={() => pickNeglected.mutate()}
-              disabled={pickNeglected.isPending}
-            >
-              {pickNeglected.isPending ? "Picking…" : "Pick one"}
-            </button>
-          )}
+          <button ... Never played tab ... />
+          <button ... Not played in 6+ months tab ... />
         </div>
-
-        {report.isLoading ? (
-          <div className="space-y-2">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-10 animate-pulse rounded bg-zinc-100 dark:bg-white/[0.04]" />
-            ))}
-          </div>
-        ) : neglectedTab === "never" ? (
-          !data?.never_played.length ? (
-            <div className="text-sm text-zinc-500">Every record has been played at least once.</div>
-          ) : (
-            <ul className="max-h-96 overflow-auto">
-              {data.never_played.map((r) => (
-                <RecordRow key={r.id} id={r.id} artist={r.artist} title={r.title} year={r.year} thumbUrl={r.thumb_url} />
-              ))}
-            </ul>
-          )
-        ) : !data?.neglected.length ? (
-          <div className="text-sm text-zinc-500">All played records have been spun in the last 6 months.</div>
-        ) : (
-          <ul className="max-h-96 overflow-auto">
-            {data.neglected.map((r) => (
-              <RecordRow
-                key={r.id}
-                id={r.id}
-                artist={r.artist}
-                title={r.title}
-                year={r.year}
-                thumbUrl={r.thumb_url}
-                lastSpunAt={r.last_spun_at}
-                spinCount={r.spin_count}
-              />
-            ))}
-          </ul>
-        )}
+        ... list content ...
       </section>
+      ── */}
       </>
       )}
     </div>

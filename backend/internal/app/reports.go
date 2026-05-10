@@ -310,7 +310,7 @@ order by a.artist, a.title
 		}
 		rows.Close()
 
-		// ── Neglected (played but not in 6 months) ───────────────────────────
+		// ── Neglected (played but not in 6 months, excludes 7" singles) ────────
 		rows, err = a.db.Query(r.Context(), `
 select
   a.id, a.title, a.artist, a.year, a.thumb_url,
@@ -319,6 +319,7 @@ select
 from albums a
 join spins s on s.album_id = a.id and s.user_id = $1
 where a.user_id = $1
+  and (a.format is null or a.format not like '7%')
 group by a.id, a.title, a.artist, a.year, a.thumb_url
 having max(s.spun_at) < now() - interval '6 months'
 order by last_spun_at asc
